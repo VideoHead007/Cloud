@@ -1,0 +1,612 @@
+---
+title: "Assignment_Week_5"
+author: "Zikang He (539567ZH)"
+date: "5/10/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparation
+load the packages 
+```{r message=FALSE, warning=FALSE}
+# Install and load the jsonlite package to handle json
+# files
+#install.packages("jsonlite", dependencies = TRUE)
+library(jsonlite)
+
+# Install and load the ggplot2 package for graphics
+# install.packages("ggplot2", dependencies = TRUE)
+library(ggplot2)
+
+# Install and load the plyr package for summaries
+# of sub-groups of the data
+# install.packages("plyr", dependencies = TRUE)
+library(plyr)
+
+# Install and load gganimate package for animated
+# graphics
+# install.packages("gganimate", dependencies = TRUE)
+library(gganimate)
+
+# Install and load the ggmap package 
+# install.packages("ggmap", dependencies = TRUE)
+library(ggmap)
+# citation("ggmap")
+
+# # Install and load the rgdal package for handling geospatial 
+# coordinates 
+# install.packages("rgdal", dependencies = TRUE)
+library(rgdal)
+
+# Install and load the raster package, which will be used
+# to clip a geographic region
+# install.packages("raster", dependencies = TRUE)
+library(raster)
+
+# Install and load the reshape2 package for transforming 
+# the population data per neighborhood
+# install.packages("reshape2", dependencies = TRUE)
+library(reshape2)
+
+# Install and load the stringr package for more enhanced
+# string handling functionality
+# install.packages("stringr", dependencies = TRUE)
+library(stringr)
+
+# Install tm package for text mining
+# install.packages("tm",dependencies = TRUE)
+library(tm)
+
+# Install wordcloud package for text mining
+# install.packages("wordcloud",dependencies = TRUE)
+library(wordcloud)
+
+# Install and load SentimentAnalysis package for 
+# sentiment analysis with various dictionaries
+#install.packages("SentimentAnalysis")
+library(SentimentAnalysis)
+
+# install.packages("caret")
+library(caret)
+
+# install.packages("quanteda")
+library(quanteda)
+
+#install.packages("doSNOW")
+library(doSNOW)
+
+library(nnet)
+
+library(e1071)
+
+library(rpart)
+
+library(cluster)
+
+library(class)
+
+library(randomForest)
+
+library(tidyr)
+```
+Define folder structure
+```{r}
+
+# Define directory structure (explained in lab session 2)
+# by means of cutting and pasting the names of paths
+
+dir <- "C:/Users/video/Desktop/SUFE MBA PF2/BDBA/Assignment week5/"
+setwd(dir)
+dirData <- paste0(dir, "Data/")
+dirRslt <- paste0(dir, "Results/")
+dirProg <- paste0(dir, "Programs/")
+```
+
+# Q1 Generate a map
+
+## Get the covid and population data ready!
+Read the COVID-19 data
+```{r}
+jsonCOVID <-
+  fromJSON ("https://pomber.github.io/covid19/timeseries.json")
+
+# check the class
+class(jsonCOVID)
+
+class(jsonCOVID$Afghanistan)
+
+```
+
+Prepare the EU data
+```{r}
+# select EU countries
+euCountries <- c("Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czechia", "Denmark", "Estonia", "Finland", 
+                 "France", "Germany", "Greece", "Hungary", "Ireland", "Italy", "Latvia", "Lithuania", "Luxembourg",
+                 "Malta", "Netherlands", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden")
+
+# Select the data and rbind into a single dataframe
+dfcovid <- rbind(jsonCOVID$Austria, 
+jsonCOVID$Belgium, 
+jsonCOVID$Bulgaria, 
+jsonCOVID$Croatia, 
+jsonCOVID$Cyprus, 
+jsonCOVID$Czechia, 
+jsonCOVID$Denmark, 
+jsonCOVID$Estonia, 
+jsonCOVID$Finland, 
+jsonCOVID$France, 
+jsonCOVID$Germany, 
+jsonCOVID$Greece, 
+jsonCOVID$Hungary, 
+jsonCOVID$Ireland, 
+jsonCOVID$Italy, 
+jsonCOVID$Latvia, 
+jsonCOVID$Lithuania, 
+jsonCOVID$Luxembourg, 
+jsonCOVID$Malta, 
+jsonCOVID$Netherlands, 
+jsonCOVID$Poland, 
+jsonCOVID$Portugal, 
+jsonCOVID$Romania, 
+jsonCOVID$Slovakia, 
+jsonCOVID$Slovenia, 
+jsonCOVID$Spain, 
+jsonCOVID$Sweden) 
+
+# Store how many observation each country
+n_obs <- nrow(jsonCOVID$Belgium)
+
+# Check dfcovide
+str(dfcovid)
+
+# Make the "date" as date
+dfcovid$date <- as.Date(dfcovid$date)
+
+# Check if the "date" is date
+str(dfcovid)
+
+# Add a column to the dataframe specifying the country of each observation.
+dfcovid$country <- rep(euCountries, each = n_obs)
+
+# Remove jsonCOVID
+remove(jsonCOVID)
+```
+Read the data of population from eurostat
+
+```{r}
+population <- read.csv("pop.csv")
+
+# Rename the columns
+names(population)[1] <- "country"
+names(population)[2] <- "population"
+
+# Change the name of the country
+population$country <- c("Austria", "Belgium", "Bulgaria", "Cyprus", 
+                        "Czechia","Germany","Denmark","Estonia", 
+                        "Greece", "Spain", "Finland", "France", 
+                        "Croatia", "Hungary", "Ireland", "Italy", 
+                        "Lithuania", "Luxembourg", "Latvia", "Malta", 
+                        "Netherlands", "Poland", "Portugal", "Romania", 
+                        "Sweden", "Slovenia", "Slovakia") 
+# Check the class 
+str(population)
+
+```
+
+Merge the dfcovid and the population
+
+```{r}
+dfcovid <- merge(dfcovid, population, by = "country" )
+
+# Check the class
+str(dfcovid)
+```
+
+Calculate the number of (cumulative) confirmed cases per 100,000 inhabitants.
+
+```{r}
+dfcovid$con_in_100k <- round(dfcovid$confirmed/dfcovid$population*100000, 0)
+
+# Calculate dfcovid today
+dfcovid_now <- as.data.frame(matrix(NA, 27, 7))
+
+for (i in 0:27) {
+  dfcovid_now[i,] <- dfcovid[i*n_obs,]
+}
+str(dfcovid_now)
+names(dfcovid_now) <- colnames(dfcovid)
+
+
+```
+
+## Build the map
+```{r}
+# Read the shape file from the subdirectory. The readOGR
+# function is from the package rgdal.
+dfShape <- readOGR(paste0(dirData, "ne_50m_admin_0_countries.shp"), 
+                   stringsAsFactors = FALSE)
+
+# Check the dfshape
+class(dfShape)
+
+
+# Check the coordinate system of the shape data 
+dfShape@proj4string
+
+# Make a clip area
+clipEU <- as(extent(-9, 35, 34, 72), "SpatialPolygons")
+# Use the same coordinate system
+proj4string(clipEU) <- CRS(proj4string(dfShape))
+# Intersect 
+dfshapeEU <- intersect(dfShape, clipEU)
+# Subset EU
+dfshapeEU <- subset(dfshapeEU, dfshapeEU@data$SOVEREIGNT %in% euCountries)
+# Check the results
+dfshapeEU@data$SOVEREIGNT
+
+dffortifiedEU <- fortify(dfshapeEU, region = "SOVEREIGNT")
+
+dffortifiedEU_covid <- merge(dffortifiedEU, dfcovid_now, by.x = "id", by.y = "country")
+
+ggplot ( data = dffortifiedEU_covid,
+  aes (x = long , y = lat , group = group)) +
+  geom_polygon (aes(fill= con_in_100k), color = "white") + 
+  scale_fill_continuous(low = "white", high = "red")
+```
+
+# Q2 Moving Scatter Plot
+
+Subset the data from March to May.
+```{r}
+# Set a seq of date by week
+days <- seq.Date(from = as.Date("2020/3/01",format = "%Y/%m/%d"), by = "week", length.out = 12)
+
+# Subet the dfcovid by date
+dfcovid_Mar2May <- subset(dfcovid, dfcovid$date %in% days)
+
+# Plot static plot
+p <- ggplot(dfcovid_Mar2May, aes(x = con_in_100k, y = deaths, color = country)) + 
+  geom_point(aes(group = country, size = population/10000000)) + 
+  xlab("cumulative COVID-19 cases per 100k inhabitants") + 
+  ylab("Deaths")
+
+# Time transition
+p.anim <- p +  transition_time(time = dfcovid_Mar2May$date) +
+  ggtitle("Year: {frame_time}") +
+  shadow_wake(wake_length = 0.11, alpha = FALSE)
+
+# Export
+# gganimate::animate(p.anim,
+#        width = 300, height = 200, res = 40,
+#        renderer = av_renderer())
+# anim_save(dirRslt)
+
+```
+
+
+# Q3 TextMining 
+View the data
+```{r}
+# Set the random seed for reproducibility
+set.seed(539567)
+
+# Read the data 
+dfreviews <- read.csv("ebook_ratings.csv", stringsAsFactors = FALSE )
+str(dfreviews)
+
+# Check the data to see if there are any missing values in text reviews, 
+# and in stars
+sum(is.na(dfreviews$text.review))
+sum(is.na(dfreviews$stars))
+
+# Label the target variable
+dfreviews$labels <- ifelse(dfreviews$stars == 5, 1, 0)
+str(dfreviews)
+
+# Convert the label into factor
+dfreviews$labels <- as.factor(dfreviews$labels)
+
+# Check the distribution of the labels
+table(dfreviews$labels)
+prop.table(table(dfreviews$labels))
+
+# Check the distribution of the text lengths of reviews.
+dfreviews$text.length <- nchar(dfreviews$text.review)
+summary(dfreviews$text.length)
+
+# Visualize the distribution with ggplot2
+ggplot(dfreviews, aes(x = text.length, fill = labels)) + 
+  theme_bw() + 
+  geom_histogram(binwidth = 5) + 
+  labs(x = "Length of Text", y = "Text count", 
+       title = "Distribution of Text Lengths with class labels")
+
+# Take a closer look
+ggplot(dfreviews, aes(x = text.length, fill = labels)) + 
+  theme_bw() + 
+  geom_histogram(binwidth = 5) + 
+  labs(x = "Length of Text", y = "Text count", 
+       title = "Distribution of Text Lengths with class labels") + 
+  xlim(0,5000)
+```
+
+
+Prepare the data
+
+```{r}
+
+# Read the text descriptions into a tm object. First, the
+# vector is identified as a vector, next it is converted
+# to a corpus with tm's VCorpus function
+vecData  <- VectorSource(dfreviews$text.review)
+myCorpus <- VCorpus(vecData)
+
+
+# Make function to remove any web links
+removeLinks <- function(x) {
+  gsub("http[^[:blank:]]+","",x)
+}
+
+# Removing hyperlinks from the corpus
+myCorpus <- tm_map(myCorpus, content_transformer(removeLinks))
+
+
+# 1. Convert words to lowercase
+myCorpus <- tm_map(myCorpus, content_transformer(tolower))
+
+
+# 2. Remove punctuation
+myCorpus <- tm_map(myCorpus, removePunctuation)
+
+
+# 3. Remove numbers
+myCorpus <- tm_map(myCorpus, removeNumbers)
+
+
+# 4. Remove stop-words
+myCorpus <- tm_map(myCorpus, removeWords, stopwords("english"))
+
+
+# 5. Remove extra white spaces
+myCorpus <- tm_map(myCorpus, stripWhitespace)
+
+
+# 6. Stemming
+myCorpus<- tm_map(myCorpus, stemDocument, language = "english")
+
+
+
+# Matrix with terms frequency
+dtm <- TermDocumentMatrix(myCorpus)
+
+
+# Visualize the corpus using a word cloud
+
+wordcloud(myCorpus, scale=c(5,0.5), max.words=50,
+          random.order=FALSE, rot.per=0.35, 
+          use.r.layout=FALSE, 
+          colors=brewer.pal(8, 'Dark2'))
+
+# select words by sparse
+
+dtm.90 <- removeSparseTerms(dtm, sparse = 0.90)
+dtm.91 <- removeSparseTerms(dtm, sparse = 0.91)
+dtm.92 <- removeSparseTerms(dtm, sparse = 0.92)
+dtm.93 <- removeSparseTerms(dtm, sparse = 0.93)
+dtm.94 <- removeSparseTerms(dtm, sparse = 0.94)
+dtm.95 <- removeSparseTerms(dtm, sparse = 0.95)
+dtm.96 <- removeSparseTerms(dtm, sparse = 0.96)
+dtm.97 <- removeSparseTerms(dtm, sparse = 0.97)
+dtm.98 <- removeSparseTerms(dtm, sparse = 0.98)
+dtm.99 <- removeSparseTerms(dtm, sparse = 0.99)
+
+
+# Redefine dtms as a matrix
+# Transform and make them as dataframe
+
+dtm.90 <- t(as.matrix(dtm.90))
+dtm.91 <- t(as.matrix(dtm.91))
+dtm.92 <- t(as.matrix(dtm.92))
+dtm.93 <- t(as.matrix(dtm.93))
+dtm.94 <- t(as.matrix(dtm.94))
+dtm.95 <- t(as.matrix(dtm.95))
+dtm.96 <- t(as.matrix(dtm.96))
+dtm.97 <- t(as.matrix(dtm.97))
+dtm.98 <- t(as.matrix(dtm.98))
+dtm.99 <- t(as.matrix(dtm.99))
+
+# to see how many words left, 
+# selected by different sparse
+sparse <- 90:99
+words <- c(ncol(dtm.90), ncol(dtm.91), ncol(dtm.92), ncol(dtm.93),
+           ncol(dtm.94), ncol(dtm.95), ncol(dtm.96), ncol(dtm.97),
+           ncol(dtm.98),ncol(dtm.99))
+word_sparse <- as.data.frame(cbind(sparse, words))
+str(word_sparse)
+
+# plot how the number of words changes 
+ggplot(word_sparse, aes(x = sparse, y = words)) + 
+  theme_bw() + 
+  geom_line() +
+  geom_point() + 
+  labs(title = "Sparse vs Words")
+
+# make the matrix as dataframe and add labels
+# could also include sentiment analysis,
+# but time is tight.
+
+dtm.90 <- cbind(dfreviews$labels, as.data.frame(dtm.90))
+dtm.91 <- cbind(dfreviews$labels, as.data.frame(dtm.91))
+dtm.92 <- cbind(dfreviews$labels, as.data.frame(dtm.92))
+dtm.93 <- cbind(dfreviews$labels, as.data.frame(dtm.93))
+dtm.94 <- cbind(dfreviews$labels, as.data.frame(dtm.94))
+dtm.95 <- cbind(dfreviews$labels, as.data.frame(dtm.95))
+dtm.96 <- cbind(dfreviews$labels, as.data.frame(dtm.96))
+dtm.97 <- cbind(dfreviews$labels, as.data.frame(dtm.97))
+dtm.98 <- cbind(dfreviews$labels, as.data.frame(dtm.98))
+dtm.99 <- cbind(dfreviews$labels, as.data.frame(dtm.99))
+
+```
+
+Build a model
+
+```{r}
+mdl <- labels ~ .
+```
+
+Make a function(Could add cross validation in the function. but it takes too much time to run the model.)
+```{r}
+sparse_function <- function(df){
+  # change the name of label column
+  names(df)[1] <- "labels"
+  
+  # split the data into train and text 
+  index <-createDataPartition(df$labels, time=1, p=0.7, list=F)
+  
+  train <- df[index,]
+  test <- df[-index,]
+  
+  # logit model
+  rslt_logit <- glm(mdl, data = train, family = "binomial",)
+  
+  pred_logit <- predict(rslt_logit, test, type = "response")
+  
+  class_logit <- factor(as.numeric(pred_logit > 0.5), levels = c(0 ,1)) 
+  
+  acc_logit <- mean(class_logit == test$labels)
+  
+  # SVM model
+  rslt_SVM <- svm(mdl, data = train)
+  
+  class_SVM <- predict(rslt_SVM, test)
+  
+  acc_SVM <- mean(class_SVM == test$labels)
+  
+  # Neural network(maxit set as 1 for saving computing time)
+  rslt_NN <- nnet(mdl, data = train, 
+                  maxit = 1, size = 10, MaxNWts=7000)
+  
+  class_NN <- predict(rslt_NN, test, type = "class")
+  
+  acc_NN <- mean(class_NN == test$labels)
+  
+  # KNN
+  
+  class_KNN <-  knn(train, test, train$labels, k = 5)
+  
+  acc_KNN <- mean(class_KNN == test$labels)
+  
+  num_of_words <- ncol(test)-1
+ 
+  acc <- as.data.frame(cbind(num_of_words, acc_logit, acc_SVM, acc_NN, acc_KNN))
+  return(acc)
+}
+```
+Use the function and combine the resluts
+```{r message=FALSE}
+
+performance <- rbind(sparse_function(dtm.90), 
+                     sparse_function(dtm.91), 
+                     sparse_function(dtm.92), 
+                     sparse_function(dtm.93), 
+                     sparse_function(dtm.94), 
+                     sparse_function(dtm.95), 
+                     sparse_function(dtm.96), 
+                     sparse_function(dtm.97), 
+                     sparse_function(dtm.98), 
+                     sparse_function(dtm.99))
+# add a new column
+performance$sparse <- 90:99
+
+# make the performance in long format
+
+performance <- gather(performance, key = model, value = accuracy, 2:5 )
+
+# plot the results
+
+ggplot(data = performance, aes(x = as.factor(performance$num_of_words),
+                               y = accuracy, color = model, group = model)) + 
+  theme_bw() + 
+  geom_line() + 
+  geom_point()
+
+performance[which.max(performance$accuracy),1]
+```
+Based on these parameters and models, the KNN model performs best when there are `r performance[which.max(performance$accuracy),1]` words included in terms of accuracy.
+
+
+bulid a function that make cross validation in each dataframe.
+```{r}
+cv <- function(df){
+  names(df)[1] <- "labels"
+  
+  cv.folds <- createMultiFolds(df$labels, k = 5, times = 3)
+
+  cv.cntrl <- trainControl(method = "repeatedcv",number = 5,repeats = 3, index = cv.folds)
+
+  start.time <- Sys.time()
+
+  cl <- makeCluster(3, type = "SOCK")
+
+  registerDoSNOW(cl)
+
+
+  repart.cv.1 <- train(mdl, data =df, method = "rpart",
+                     trControl = cv.cntrl, tuneLenth = 7)
+
+stopCluster(cl)
+
+total.time <- Sys.time() - start.time
+
+rpart.cv.1
+}
+
+cv(dtm.94)
+```
+```{r}
+names(dtm.90)[1] <- "labels"
+
+cv.folds <- createMultiFolds(dtm.90$labels, k = 2, times = 1)
+
+cv.cntrl <- trainControl(method = "repeatedcv",number = 2,repeats = 1, index = cv.folds)
+
+start.time <- Sys.time()
+
+cl <- makeCluster(3, type = "SOCK")
+
+registerDoSNOW(cl)
+
+colnames(dtm.90) <- make.names(colnames(dtm.90))
+
+rf.cv <- train(labels ~ ., data = dtm.90, method = "rf",
+                     trControl = cv.cntrl, tuneLenth = 7)
+
+logit.cv <- train(labels ~ ., data = dtm.90, method = "logreg",
+                     trControl = cv.cntrl, tuneLenth = 7)
+
+elm.cv <- train(labels ~ ., data = dtm.90, method = "elm",
+                     trControl = cv.cntrl, tuneLenth = 7)
+
+nbc.cv <- train(labels ~ ., data = dtm.90, method = "nbDiscrete",
+                     trControl = cv.cntrl, tuneLenth = 7)
+
+knn.cv <- train(labels ~ ., data = dtm.90, method = "knn",
+                     trControl = cv.cntrl, tuneLenth = 7)
+
+
+
+stopCluster(cl)
+
+total.time <- Sys.time() - start.time
+
+rf.cv
+logit.cv
+elm.cv
+nbc.cv
+knn.cv
+
+```
+
